@@ -1,0 +1,83 @@
+# AI Flow Configuration
+
+# LLM Provider Settings
+llm:
+  # Primary provider: gemini (free) or ollama (local)
+  provider: gemini
+
+  # Gemini settings (Free tier: 15 RPM, 1M tokens/day)
+  gemini:
+    model: gemini-2.5-flash
+    temperature: 0.1
+    max_tokens: 8192
+
+  # Ollama settings (for local GPU)
+  ollama:
+    base_url: http://localhost:11434
+    model: deepseek-coder-v2:16b
+    temperature: 0.1
+    max_tokens: 8192
+
+# Agent-specific model overrides
+agents:
+  pm_agent:
+    model: gemini-2.0-flash-exp
+    temperature: 0.3
+
+  architect_agent:
+    model: gemini-2.0-flash-exp
+    temperature: 0.2
+
+  task_agent:
+    model: gemini-2.0-flash-exp
+    temperature: 0.1
+
+  code_agent:
+    model: gemini-2.0-flash-exp
+    temperature: 0.1
+
+  review_agent:
+    model: gemini-2.0-flash-exp
+    temperature: 0.2
+
+  qa_agent:
+    model: gemini-2.0-flash-exp
+    temperature: 0.1
+
+# Tech Stack Constraints
+tech_stack:
+  backend:
+    framework: nestjs
+    language: typescript
+    orm: prisma
+    database: postgresql
+    cache: redis
+    queue: bullmq
+
+  frontend:
+    framework: nextjs
+    language: typescript
+    styling: tailwindcss
+    state: zustand
+
+# Workflow Settings
+workflow:
+  max_retries: 3
+  retry_delay_seconds: 5
+  checkpoint_after_phase: true
+  auto_approve_trivial_changes: true
+
+# Output Settings
+output:
+  base_dir: ./generated
+  create_git_commits: true
+  run_linting: true
+  run_tests: true
+
+# RAG Settings
+rag:
+  enabled: true
+  embedding_model: models/embedding-001
+  chunk_size: 1000
+  chunk_overlap: 200
+  top_k: 5
