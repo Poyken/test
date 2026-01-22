@@ -7,7 +7,7 @@ llm:
 
   # Gemini settings (Free tier: 15 RPM, 1M tokens/day)
   gemini:
-    model: gemini-2.5-flash
+    model: gemini-2.0-flash
     temperature: 0.1
     max_tokens: 8192
 
@@ -21,27 +21,27 @@ llm:
 # Agent-specific model overrides
 agents:
   pm_agent:
-    model: gemini-2.0-flash-exp
+    model: gemini-2.0-flash
     temperature: 0.3
 
   architect_agent:
-    model: gemini-2.0-flash-exp
+    model: gemini-2.0-flash
     temperature: 0.2
 
   task_agent:
-    model: gemini-2.0-flash-exp
+    model: gemini-2.0-flash
     temperature: 0.1
 
   code_agent:
-    model: gemini-2.0-flash-exp
+    model: gemini-2.0-flash
     temperature: 0.1
 
   review_agent:
-    model: gemini-2.0-flash-exp
+    model: gemini-2.0-flash
     temperature: 0.2
 
   qa_agent:
-    model: gemini-2.0-flash-exp
+    model: gemini-2.0-flash
     temperature: 0.1
 
 # Tech Stack Constraints

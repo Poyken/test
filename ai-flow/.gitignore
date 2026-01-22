@@ -1,0 +1,8 @@
+venv/
+venv_win/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+generated/
+models.txt

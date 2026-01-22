@@ -89,28 +89,53 @@ class BaseAgent(ABC):
             HumanMessage(content=user_prompt),
         ]
         
-        response = await self.llm.ainvoke(messages)
+        import asyncio
+        import random
         
-        if output_schema:
-            # Parse JSON response to Pydantic model
+        max_retries = 10  # Tăng số lần retry cho Free Tier
+        base_delay = 5    # Giây
+        
+        last_exception = None
+        
+        for attempt in range(max_retries):
             try:
-                json_str = response.content
-                # Extract JSON from markdown code blocks if present
-                if "```json" in json_str:
-                    json_str = json_str.split("```json")[1].split("```")[0]
-                elif "```" in json_str:
-                    json_str = json_str.split("```")[1].split("```")[0]
-                
-                import json
-                data = json.loads(json_str)
-                
-                if isinstance(data, list):
-                    return [output_schema(**item) for item in data]
-                return output_schema(**data)
+                response = await self.llm.ainvoke(messages)
+                return self._parse_response(response, output_schema)
             except Exception as e:
-                raise ValueError(f"Failed to parse LLM response: {e}\nResponse: {response.content}")
+                last_exception = e
+                # Kiểm tra lỗi rate limit (429) hoặc quota
+                error_str = str(e).lower()
+                if "429" in error_str or "resource_exhausted" in error_str or "quota" in error_str:
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    if delay > 60: delay = 60 # Cap delay at 60s
+                    self.log(f"Rate limit hit. Retrying in {delay:.2f}s (Attempt {attempt+1}/{max_retries})", level="warning")
+                    await asyncio.sleep(delay)
+                else:
+                    raise e
         
-        return response.content
+        raise last_exception
+
+    def _parse_response(self, response, output_schema):
+        if not output_schema:
+            return response.content
+
+        # Parse JSON response to Pydantic model
+        try:
+            json_str = response.content
+            # Extract JSON from markdown code blocks if present
+            if "```json" in json_str:
+                json_str = json_str.split("```json")[1].split("```")[0]
+            elif "```" in json_str:
+                json_str = json_str.split("```")[1].split("```")[0]
+            
+            import json
+            data = json.loads(json_str)
+            
+            if isinstance(data, list):
+                return [output_schema(**item) for item in data]
+            return output_schema(**data)
+        except Exception as e:
+            raise ValueError(f"Failed to parse LLM response: {e}\nResponse: {response.content}")
     
     def log(self, message: str, level: str = "info"):
         """Log a message with agent context"""
