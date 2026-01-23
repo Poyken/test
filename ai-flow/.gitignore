@@ -1,8 +1,29 @@
-venv/
-venv_win/
-.env
+# Python
 __pycache__/
-*.pyc
-.DS_Store
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual Environments
+venv/
+env/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Project Specific
+bin/
 generated/
-models.txt
+logs/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.DS_Store

@@ -2,46 +2,54 @@
 
 # LLM Provider Settings
 llm:
-  # Primary provider: gemini (free) or ollama (local)
-  provider: gemini
+  # Primary provider: gemini (free), ollama (local), or openrouter (openai-compatible)
+  provider: ollama
 
-  # Gemini settings (Free tier: 15 RPM, 1M tokens/day)
+  # OpenRouter settings (OpenAI Compatible)
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    model: meta-llama/llama-3.3-70b-instruct:free
+    temperature: 0.1
+    max_tokens: 8192
+
+  # Gemini settings (Free tier: 15 RPM, 1M tokens/day) (Deprecated usage)
   gemini:
-    model: gemini-2.0-flash
+    model: gemini-pro-latest
     temperature: 0.1
     max_tokens: 8192
 
   # Ollama settings (for local GPU)
   ollama:
     base_url: http://localhost:11434
-    model: deepseek-coder-v2:16b
+    model: qwen2.5-coder:7b
     temperature: 0.1
     max_tokens: 8192
 
 # Agent-specific model overrides
+# Agent-specific model overrides (Using global settings)
 agents:
   pm_agent:
-    model: gemini-2.0-flash
+    # model: gemini-2.0-flash-exp
     temperature: 0.3
 
   architect_agent:
-    model: gemini-2.0-flash
+    # model: gemini-2.0-flash-exp
     temperature: 0.2
 
   task_agent:
-    model: gemini-2.0-flash
+    # model: gemini-2.0-flash-exp
     temperature: 0.1
 
   code_agent:
-    model: gemini-2.0-flash
+    # model: gemini-2.0-flash-exp
     temperature: 0.1
 
   review_agent:
-    model: gemini-2.0-flash
+    # model: gemini-2.0-flash-exp
     temperature: 0.2
 
   qa_agent:
-    model: gemini-2.0-flash
+    # model: gemini-2.0-flash-exp
     temperature: 0.1
 
 # Tech Stack Constraints

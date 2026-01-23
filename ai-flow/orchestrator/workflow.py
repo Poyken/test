@@ -218,7 +218,7 @@ class AIFlowOrchestrator:
             Final workflow state with all generated artifacts
         """
         # Create initial state
-        state = create_initial_state(meeting_notes, project_context)
+        state = create_initial_state(meeting_notes, project_context, output_dir)
         
         print(f"\n{'='*60}")
         print("AI FLOW STARTED")

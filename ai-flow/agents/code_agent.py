@@ -145,11 +145,24 @@ TEST TASK GUIDELINES:
         existing_files_context = ""
         if state.get("generated_files"):
             existing_files_context = "\n\nEXISTING GENERATED FILES:\n"
+            # Summarize files instead of full content if we have many
+            total_files = len(state["generated_files"])
             for path, content in state["generated_files"].items():
-                existing_files_context += f"\n--- {path} ---\n{content[:2000]}...\n"
+                if total_files > 5:
+                    # strict truncation for many files
+                    existing_files_context += f"\n--- {path} ---\n{content[:500]}...\n"
+                else:
+                    existing_files_context += f"\n--- {path} ---\n{content[:2000]}...\n"
         
         # Build context from project
         project_context = state.get("project_context", "")
+        # Truncate context if too long
+        # Estimate: 1 token ~= 4 chars. Target < 100k tokens (~400k chars)
+        # We reserve ~20k tokens for the rest of the prompt
+        max_context_chars = 300000 
+        
+        if len(project_context) > max_context_chars:
+            project_context = project_context[:max_context_chars] + "\n...[Context Truncated]..."
         
         user_prompt = f"""Generate code for the following task.
 
@@ -167,27 +180,88 @@ PROJECT CONTEXT:
 {existing_files_context}
 
 Generate complete, production-ready code.
+CRITICAL: You MUST respond with ONLY valid JSON. 
+Do not write any explanation text outside the JSON.
+The JSON must have a "files" key containing an array of file objects.
 Respond with ONLY valid JSON, no other text."""
+
+        # Final safety check for prompt length
+        if len(user_prompt) > 400000: # ~100k tokens
+            self.log("Prompt too long, aggressive truncation applied", "warning")
+            # Keep the task info (start) and truncate the middle (context)
+            task_info_end = user_prompt.find("PROJECT CONTEXT:") + 16
+            context_end = len(user_prompt) - 100 # keep end instructions
+            
+            # Keep execution logic, cut context
+            allowed_context = 400000 - task_info_end - 500
+            if allowed_context > 0:
+                truncated_context = user_prompt[task_info_end:task_info_end+allowed_context]
+                user_prompt = user_prompt[:task_info_end] + truncated_context + "\n...[TRUNCATED]...\n" + user_prompt[context_end:]
 
         try:
             response = await self.invoke_llm(user_prompt)
             
             # Parse the response
-            response_text = response
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0]
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0]
+            response_text = str(response)
             
-            data = json.loads(response_text)
+            # Log raw response for debugging (truncated)
+            self.log(f"LLM Raw Output purpose debugging: {response_text[:500]}...", "info")
+
+            # Parsing logic with robust regex for 7B models
+            import re
+            
+            # 1. Try to find JSON object structure
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                response_text = json_match.group(0)
+            
+            data = {}
+            try:
+                data = json.loads(response_text)
+            except json.JSONDecodeError:
+                self.log("Standard JSON parse failed, trying repair...", "warning")
+                # Try to fix common issues
+                try:
+                    # Escape unescaped newlines in values
+                    fixed_text = re.sub(r'(?<=: ")(.*?)(?=")', lambda m: m.group(1).replace('\n', '\\n'), response_text, flags=re.DOTALL)
+                    data = json.loads(fixed_text)
+                except:
+                    self.log("JSON repair failed.", "error")
+
             files_data = data.get("files", [])
             
-            # Store generated code in state
+            # Auto-map 'name' to 'path' if 'path' is missing (common 7B hallucination)
+            if files_data:
+                for f in files_data:
+                    if "path" not in f and "name" in f:
+                        f["path"] = f["name"]
+                        self.log(f"Mapped 'name' to 'path' for {f['path']}", "warning")
+
+
+            files_data = data.get("files", [])
+            
+            if not files_data:
+                 self.log(f"Warning: No files found in response. Data keys: {list(data.keys())}", "warning")
+
+            # Store generated code in state and write to disk
+            output_dir = state.get("output_dir", "./generated")
+            from pathlib import Path
+            
             for file_info in files_data:
                 path = file_info["path"]
                 content = file_info["content"]
+                
+                # Update state
                 state["generated_files"][path] = content
-                self.log(f"Generated: {path}", "success")
+                
+                # Write to disk immediately
+                try:
+                    full_path = Path(output_dir) / path
+                    full_path.parent.mkdir(parents=True, exist_ok=True)
+                    full_path.write_text(content, encoding='utf-8')
+                    self.log(f"Generated and Saved: {path}", "success")
+                except Exception as e:
+                    self.log(f"Error saving {path}: {e}", "error")
             
             # Update task status
             for t in state["tasks"]:

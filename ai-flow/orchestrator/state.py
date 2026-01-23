@@ -104,6 +104,7 @@ class WorkflowState(TypedDict):
     # Input
     meeting_notes: str
     project_context: str  # Existing codebase context from RAG
+    output_dir: str  # Directory for generated files
     
     # Phase 1: Requirements
     user_stories: List[UserStory]
@@ -134,11 +135,12 @@ class WorkflowState(TypedDict):
     completed_at: Optional[str]
 
 
-def create_initial_state(meeting_notes: str, project_context: str = "") -> WorkflowState:
+def create_initial_state(meeting_notes: str, project_context: str = "", output_dir: str = "./generated") -> WorkflowState:
     """Create initial workflow state from meeting notes"""
     return WorkflowState(
         meeting_notes=meeting_notes,
         project_context=project_context,
+        output_dir=output_dir,
         user_stories=[],
         technical_specs=[],
         tasks=[],

@@ -8,10 +8,12 @@ from typing import Any, Optional
 import yaml
 from pathlib import Path
 
+from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel
+import os
 
 from orchestrator.state import WorkflowState
 
@@ -32,11 +34,34 @@ class BaseAgent(ABC):
                 return yaml.safe_load(f)
         return {}
     
-    def _init_llm(self) -> ChatGoogleGenerativeAI:
+    def _init_llm(self):
         """Initialize the LLM based on configuration"""
         provider = self.config.get("llm", {}).get("provider", "gemini")
         
-        if provider == "gemini":
+        if provider == "ollama":
+            from langchain_ollama import ChatOllama
+            ollama_config = self.config.get("llm", {}).get("ollama", {})
+            return ChatOllama(
+                base_url=ollama_config.get("base_url", "http://localhost:11434"),
+                model=ollama_config.get("model", "qwen2.5-coder:7b"),
+                temperature=ollama_config.get("temperature", 0.1),
+            )
+
+        elif provider == "openrouter":
+            openrouter_config = self.config.get("llm", {}).get("openrouter", {})
+            api_key = os.getenv("OPENROUTER_API_KEY")
+            if not api_key:
+                raise ValueError("OPENROUTER_API_KEY environment variable not set")
+                
+            return ChatOpenAI(
+                base_url=openrouter_config.get("base_url", "https://openrouter.ai/api/v1"),
+                api_key=api_key,
+                model=openrouter_config.get("model", "google/gemini-2.0-flash-exp:free"),
+                temperature=openrouter_config.get("temperature", 0.1),
+                max_tokens=openrouter_config.get("max_tokens", 8192),
+            )
+            
+        elif provider == "gemini":
             gemini_config = self.config.get("llm", {}).get("gemini", {})
             return ChatGoogleGenerativeAI(
                 model=gemini_config.get("model", "gemini-2.0-flash-exp"),
@@ -83,59 +108,69 @@ class BaseAgent(ABC):
         """
         Invoke the LLM with the system prompt and user prompt.
         Optionally parse output to a Pydantic model.
+        Retry on 429 errors (Rate Limit) with exponential backoff.
         """
-        messages = [
-            SystemMessage(content=self.system_prompt),
-            HumanMessage(content=user_prompt),
-        ]
+        # Define retry wrapper
+        from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+        import logging
         
-        import asyncio
-        import random
-        
-        max_retries = 10  # Tăng số lần retry cho Free Tier
-        base_delay = 5    # Giây
-        
-        last_exception = None
-        
-        for attempt in range(max_retries):
+        # Configure logging for retries
+        logger = logging.getLogger(f"{self.name}_Retry")
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter('[%(name)s] %(message)s'))
+            logger.addHandler(handler)
+            logger.setLevel(logging.WARNING)
+
+        @retry(
+            reraise=True,
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=2, min=2, max=60),
+            # Retry on any exception that mentions "429" or "rate limit" string in message
+            retry=retry_if_exception_type(Exception), 
+            before_sleep=before_sleep_log(logger, logging.WARNING)
+        )
+        async def _call_llm_with_retry():
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
             try:
-                response = await self.llm.ainvoke(messages)
-                return self._parse_response(response, output_schema)
+                return await self.llm.ainvoke(messages)
             except Exception as e:
-                last_exception = e
-                # Kiểm tra lỗi rate limit (429) hoặc quota
-                error_str = str(e).lower()
-                if "429" in error_str or "resource_exhausted" in error_str or "quota" in error_str:
-                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                    if delay > 60: delay = 60 # Cap delay at 60s
-                    self.log(f"Rate limit hit. Retrying in {delay:.2f}s (Attempt {attempt+1}/{max_retries})", level="warning")
-                    await asyncio.sleep(delay)
-                else:
-                    raise e
+                # Check for rate limit error patterns
+                error_msg = str(e).lower()
+                if "429" in error_msg or "rate limit" in error_msg or "quota" in error_msg:
+                    self.log(f"Rate limit hit! Retrying... ({error_msg[:100]}...)", "warning")
+                    raise e # Trigger retry
+                raise e # Re-raise other errors immediately
         
-        raise last_exception
-
-    def _parse_response(self, response, output_schema):
-        if not output_schema:
-            return response.content
-
-        # Parse JSON response to Pydantic model
         try:
-            json_str = response.content
-            # Extract JSON from markdown code blocks if present
-            if "```json" in json_str:
-                json_str = json_str.split("```json")[1].split("```")[0]
-            elif "```" in json_str:
-                json_str = json_str.split("```")[1].split("```")[0]
-            
-            import json
-            data = json.loads(json_str)
-            
-            if isinstance(data, list):
-                return [output_schema(**item) for item in data]
-            return output_schema(**data)
+            response = await _call_llm_with_retry()
         except Exception as e:
-            raise ValueError(f"Failed to parse LLM response: {e}\nResponse: {response.content}")
+            self.log(f"LLM Call failed after retries: {e}", "error")
+            raise e
+
+        if output_schema:
+            # Parse JSON response to Pydantic model
+            try:
+                json_str = response.content
+                # Extract JSON from markdown code blocks if present
+                if "```json" in json_str:
+                    json_str = json_str.split("```json")[1].split("```")[0]
+                elif "```" in json_str:
+                    json_str = json_str.split("```")[1].split("```")[0]
+                
+                import json
+                data = json.loads(json_str)
+                
+                if isinstance(data, list):
+                    return [output_schema(**item) for item in data]
+                return output_schema(**data)
+            except Exception as e:
+                raise ValueError(f"Failed to parse LLM response: {e}\nResponse: {response.content}")
+        
+        return response.content
     
     def log(self, message: str, level: str = "info"):
         """Log a message with agent context"""

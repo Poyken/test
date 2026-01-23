@@ -16,9 +16,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 # Load environment variables
 load_dotenv()
 
-# Configure Google AI
+# Configure Google AI (if key is present)
 import google.generativeai as genai
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+if os.getenv("GOOGLE_API_KEY"):
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 from orchestrator.workflow import AIFlowOrchestrator
 from rag.indexer import DocumentIndexer, CodebaseIndexer
@@ -85,12 +86,15 @@ async def _run_async(
         border_style="blue"
     ))
     
-    # Check API key
-    if not os.getenv("GOOGLE_API_KEY"):
-        console.print("[red]Error: GOOGLE_API_KEY not set![/red]")
-        console.print("Get your free API key at: https://makersuite.google.com/app/apikey")
-        console.print("Then set it: export GOOGLE_API_KEY=your_key_here")
+    # Check API keys
+    google_key = os.getenv("GOOGLE_API_KEY")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    
+    if not google_key and not openrouter_key:
+        console.print("[red]Error: API Key not set![/red]")
+        console.print("Please set either GOOGLE_API_KEY or OPENROUTER_API_KEY in .env")
         raise typer.Exit(1)
+
     
     # Read input
     input_path = Path(input_file)
