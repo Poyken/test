@@ -1,0 +1,15 @@
+langchain
+langchain-google-genai
+langchain-openai
+langgraph
+pydantic
+python-dotenv
+pyyaml
+rich
+typer
+chromadb
+google-generativeai
+pdfplumber
+youtube_transcript_api
+pytubefix
+tenacity
