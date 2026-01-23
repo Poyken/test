@@ -96,6 +96,14 @@ class TestResult(BaseModel):
     error_messages: List[str]
 
 
+class ReflectorResult(TypedDict):
+    """Feedback from Reflector Agent"""
+    status: Literal["approved", "needs_revision"]
+    feedback: str
+    score: int
+
+
+
 class WorkflowState(TypedDict):
     """
     Main state object for the LangGraph workflow.
@@ -121,7 +129,9 @@ class WorkflowState(TypedDict):
     
     # Phase 4: Review & Testing
     review_results: List[ReviewResult]
+    review_results: List[ReviewResult]
     test_results: List[TestResult]
+    reflector_feedback: Optional[ReflectorResult]
     
     # Output
     generated_files: dict  # {filepath: content}
@@ -150,6 +160,7 @@ def create_initial_state(meeting_notes: str, project_context: str = "", output_d
         failed_tasks=[],
         review_results=[],
         test_results=[],
+        reflector_feedback=None,
         generated_files={},
         git_commits=[],
         phase="requirements",

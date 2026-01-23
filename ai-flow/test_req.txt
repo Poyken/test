@@ -1,0 +1,7 @@
+Meeting Notes - User Auth Feature
+
+I need a module for User Authentication.
+1. Users should be able to register with email and password.
+2. Users should be able to login.
+3. Passwords must be hashed.
+4. Return a JWT token on successful login.

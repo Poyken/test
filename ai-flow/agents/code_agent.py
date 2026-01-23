@@ -164,6 +164,20 @@ TEST TASK GUIDELINES:
         if len(project_context) > max_context_chars:
             project_context = project_context[:max_context_chars] + "\n...[Context Truncated]..."
         
+        # Check for reflector feedback
+        feedback_context = ""
+        if state.get("reflector_feedback") and state["reflector_feedback"].get("status") == "needs_revision":
+            feedback = state["reflector_feedback"]
+            feedback_context = f"""
+CRITICAL FEEDBACK FROM REFLECTOR:
+The previous code was rejected. Please fix the following issues:
+{feedback.get('feedback')}
+
+Please ensure your new code addresses these specific points.
+"""
+            self.log("Incorporating Reflector feedback into prompt", "info")
+
+        
         user_prompt = f"""Generate code for the following task.
 
 TASK: {task.id}
@@ -178,6 +192,7 @@ Files to modify: {', '.join(task.files_to_modify) if task.files_to_modify else '
 PROJECT CONTEXT:
 {project_context}
 {existing_files_context}
+{feedback_context}
 
 Generate complete, production-ready code.
 CRITICAL: You MUST respond with ONLY valid JSON. 

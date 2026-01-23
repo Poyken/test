@@ -18,6 +18,7 @@ from agents.task_agent import TaskAgent
 from agents.code_agent import CodeAgent
 from agents.review_agent import ReviewAgent
 from agents.qa_agent import QAAgent
+from agents.reflector_agent import ReflectorAgent
 
 
 class AIFlowOrchestrator:
@@ -37,6 +38,7 @@ class AIFlowOrchestrator:
         self.code_agent = CodeAgent(config_path)
         self.review_agent = ReviewAgent(config_path)
         self.qa_agent = QAAgent(config_path)
+        self.reflector_agent = ReflectorAgent(config_path)
         
         # Build the workflow graph
         self.graph = self._build_graph()
@@ -53,6 +55,7 @@ class AIFlowOrchestrator:
         workflow.add_node("design_architecture", self._architecture_node)
         workflow.add_node("plan_tasks", self._task_planning_node)
         workflow.add_node("execute_task", self._execute_task_node)
+        workflow.add_node("reflector_check", self._reflector_node)
         workflow.add_node("review_code", self._review_node)
         workflow.add_node("generate_tests", self._test_node)
         workflow.add_node("finalize", self._finalize_node)
@@ -75,7 +78,17 @@ class AIFlowOrchestrator:
             }
         )
         
-        workflow.add_edge("execute_task", "review_code")
+        
+        workflow.add_edge("execute_task", "reflector_check")
+        
+        workflow.add_conditional_edges(
+            "reflector_check",
+            self._check_reflector_feedback,
+            {
+                "revise": "execute_task",
+                "approve": "review_code",
+            }
+        )
         
         workflow.add_conditional_edges(
             "review_code",
@@ -125,7 +138,7 @@ class AIFlowOrchestrator:
         # Find next pending task
         for task_id in state["task_order"]:
             task = next((t for t in state["tasks"] if t.id == task_id), None)
-            if task and task.status == TaskStatus.PENDING:
+            if task and task.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.FAILED]:
                 # Check if dependencies are met
                 deps_met = all(
                     any(t.id == dep and t.status == TaskStatus.COMPLETED 
@@ -139,6 +152,10 @@ class AIFlowOrchestrator:
         
         return await self.code_agent.process(state)
     
+    async def _reflector_node(self, state: WorkflowState) -> WorkflowState:
+        """Critique generated code"""
+        return await self.reflector_agent.process(state)
+
     async def _review_node(self, state: WorkflowState) -> WorkflowState:
         """Review generated code"""
         state["phase"] = "review"
@@ -199,6 +216,13 @@ class AIFlowOrchestrator:
         """Check if there are more tasks to process"""
         pending = [t for t in state["tasks"] if t.status == TaskStatus.PENDING]
         return "more_tasks" if pending else "done"
+
+    def _check_reflector_feedback(self, state: WorkflowState) -> Literal["revise", "approve"]:
+        """Determine if code needs revision based on Reflector feedback"""
+        feedback = state.get("reflector_feedback")
+        if feedback and feedback.get("status") == "needs_revision":
+            return "revise"
+        return "approve"
     
     async def run(
         self,
